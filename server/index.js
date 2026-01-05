@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const sql = require("mssql");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 console.log("✅ SERVER FILE LOADED:", __filename);
 
@@ -72,6 +74,21 @@ async function initializeTables() {
       )
     `);
 
+    // Create users table if it doesn't exist
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='users' AND xtype='U')
+      CREATE TABLE users (
+        id INT PRIMARY KEY IDENTITY(1,1),
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100) NOT NULL,
+        last_name VARCHAR(100) NOT NULL,
+        role VARCHAR(50) DEFAULT 'user',
+        created_at DATETIME DEFAULT GETDATE(),
+        updated_at DATETIME DEFAULT GETDATE()
+      )
+    `);
+
     console.log("✅ Database tables initialized");
   } catch (err) {
     console.error("❌ Failed to initialize tables:", err.message);
@@ -129,13 +146,154 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Server is running ✅" });
 });
 
-// Get all locations
-app.get("/api/locations", (req, res) => {
+// Get all locations (protected)
+app.get("/api/locations", authenticateToken, (req, res) => {
   res.json(LOCATIONS);
 });
 
-// Get all check-ins (for dashboard)
-app.get("/api/checkins", async (req, res) => {
+// ==================== AUTHENTICATION ENDPOINTS ====================
+
+// Register new user
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, role = "user" } = req.body;
+
+    // Validate input
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
+    // Check if user already exists
+    const pool = await poolPromise;
+    const existingUser = await pool.request()
+      .input("email", sql.VarChar, email)
+      .query("SELECT id FROM users WHERE email = @email");
+
+    if (existingUser.recordset.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    // Hash password
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // Insert new user
+    const result = await pool.request()
+      .input("email", sql.VarChar, email)
+      .input("passwordHash", sql.VarChar, passwordHash)
+      .input("firstName", sql.VarChar, firstName)
+      .input("lastName", sql.VarChar, lastName)
+      .input("role", sql.VarChar, role)
+      .query(`
+        INSERT INTO users (email, password_hash, first_name, last_name, role)
+        OUTPUT INSERTED.id, INSERTED.email, INSERTED.first_name, INSERTED.last_name, INSERTED.role
+        VALUES (@email, @passwordHash, @firstName, @lastName, @role)
+      `);
+
+    const user = result.recordset[0];
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.status(201).json({
+      message: "User registered successfully",
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error("Error registering user:", err);
+    res.status(500).json({ error: "Failed to register user", message: err.message });
+  }
+});
+
+// Login user
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // Find user
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("email", sql.VarChar, email)
+      .query("SELECT id, email, password_hash, first_name, last_name, role FROM users WHERE email = @email");
+
+    if (result.recordset.length === 0) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const user = result.recordset[0];
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error("Error logging in:", err);
+    res.status(500).json({ error: "Failed to login", message: err.message });
+  }
+});
+
+// ==================== END AUTHENTICATION ENDPOINTS ====================
+
+// ==================== JWT AUTHENTICATION MIDDLEWARE ====================
+
+// Middleware to verify JWT token
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ error: "Access denied. No token provided." });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // Add user info to request object
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: "Invalid or expired token." });
+  }
+}
+
+// ==================== END MIDDLEWARE ====================
+
+// Get all check-ins (for dashboard) - protected
+app.get("/api/checkins", authenticateToken, async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
@@ -150,8 +308,8 @@ app.get("/api/checkins", async (req, res) => {
   }
 });
 
-// Create a new check-in
-app.post("/api/checkins", async (req, res) => {
+// Create a new check-in - protected
+app.post("/api/checkins", authenticateToken, async (req, res) => {
   try {
     const { staffNumber, firstName, lastName, location } = req.body;
 
@@ -179,8 +337,8 @@ app.post("/api/checkins", async (req, res) => {
   }
 });
 
-// Update a check-in
-app.put("/api/checkins/:id", async (req, res) => {
+// Update a check-in - protected
+app.put("/api/checkins/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { staffNumber, firstName, lastName, location } = req.body;
@@ -219,8 +377,8 @@ app.put("/api/checkins/:id", async (req, res) => {
   }
 });
 
-// Delete a check-in
-app.delete("/api/checkins/:id", async (req, res) => {
+// Delete a check-in - protected
+app.delete("/api/checkins/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
