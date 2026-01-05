@@ -290,6 +290,19 @@ function authenticateToken(req, res, next) {
   }
 }
 
+// Middleware to verify admin role
+function authorizeAdmin(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: "Authentication required." });
+  }
+
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Access denied. Admin privileges required." });
+  }
+
+  next();
+}
+
 // ==================== END MIDDLEWARE ====================
 
 // Get all check-ins (for dashboard) - protected
@@ -401,6 +414,138 @@ app.delete("/api/checkins/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Failed to delete check-in", message: err.message });
   }
 });
+
+// ==================== ADMIN ENDPOINTS (ROLE-BASED ACCESS) ====================
+
+// Get all users - Admin only
+app.get("/api/admin/users", authenticateToken, authorizeAdmin, async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT id, email, first_name, last_name, role, created_at, updated_at
+      FROM users
+      ORDER BY created_at DESC
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("Error fetching users:", err);
+    res.status(500).json({ error: "Failed to fetch users", message: err.message });
+  }
+});
+
+// Update user role - Admin only
+app.put("/api/admin/users/:id/role", authenticateToken, authorizeAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // Validate role
+    if (!role || !["user", "admin"].includes(role)) {
+      return res.status(400).json({ error: "Invalid role. Must be 'user' or 'admin'" });
+    }
+
+    // Prevent admin from demoting themselves
+    if (parseInt(id) === req.user.id && role !== "admin") {
+      return res.status(400).json({ error: "You cannot change your own admin role" });
+    }
+
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("id", sql.Int, id)
+      .input("role", sql.VarChar, role)
+      .query(`
+        UPDATE users
+        SET role = @role,
+            updated_at = GETDATE()
+        OUTPUT INSERTED.id, INSERTED.email, INSERTED.first_name, INSERTED.last_name, INSERTED.role
+        WHERE id = @id
+      `);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      message: "User role updated successfully",
+      user: result.recordset[0]
+    });
+  } catch (err) {
+    console.error("Error updating user role:", err);
+    res.status(500).json({ error: "Failed to update user role", message: err.message });
+  }
+});
+
+// Delete user - Admin only
+app.delete("/api/admin/users/:id", authenticateToken, authorizeAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Prevent admin from deleting themselves
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: "You cannot delete your own account" });
+    }
+
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("id", sql.Int, id)
+      .query(`
+        DELETE FROM users
+        OUTPUT DELETED.id, DELETED.email, DELETED.first_name, DELETED.last_name
+        WHERE id = @id
+      `);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      message: "User deleted successfully",
+      deletedUser: result.recordset[0]
+    });
+  } catch (err) {
+    console.error("Error deleting user:", err);
+    res.status(500).json({ error: "Failed to delete user", message: err.message });
+  }
+});
+
+// Get admin statistics - Admin only
+app.get("/api/admin/stats", authenticateToken, authorizeAdmin, async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    // Get total users count
+    const usersResult = await pool.request().query("SELECT COUNT(*) as count FROM users");
+    const totalUsers = usersResult.recordset[0].count;
+
+    // Get total check-ins count
+    const checkinsResult = await pool.request().query("SELECT COUNT(*) as count FROM checkins");
+    const totalCheckins = checkinsResult.recordset[0].count;
+
+    // Get admin count
+    const adminsResult = await pool.request().query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
+    const totalAdmins = adminsResult.recordset[0].count;
+
+    // Get check-ins today
+    const todayCheckinsResult = await pool.request().query(`
+      SELECT COUNT(*) as count
+      FROM checkins
+      WHERE CAST(check_in_time AS DATE) = CAST(GETDATE() AS DATE)
+    `);
+    const checkinsToday = todayCheckinsResult.recordset[0].count;
+
+    res.json({
+      totalUsers,
+      totalCheckins,
+      totalAdmins,
+      checkinsToday
+    });
+  } catch (err) {
+    console.error("Error fetching admin stats:", err);
+    res.status(500).json({ error: "Failed to fetch statistics", message: err.message });
+  }
+});
+
+// ==================== END ADMIN ENDPOINTS ====================
 
 // Catch-all (helps debug missing routes)
 app.use((req, res) => {

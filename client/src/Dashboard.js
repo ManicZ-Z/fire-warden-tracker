@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Admin from "./Admin";
 import {
   Box,
   Container,
@@ -62,6 +63,10 @@ function Dashboard() {
   const borderColor = useColorModeValue("gray.200", "gray.700");
   const tableHeaderBg = useColorModeValue("gray.50", "gray.700");
   const tableRowHoverBg = useColorModeValue("gray.50", "gray.700");
+
+  // Get current user from localStorage
+  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isAdmin = currentUser.role === "admin";
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -306,6 +311,21 @@ function Dashboard() {
             >
               Dashboard
             </Tab>
+            {isAdmin && (
+              <Tab
+                fontWeight="semibold"
+                _selected={{
+                  color: "brand.700",
+                  borderColor: "brand.700",
+                  borderBottomColor: bgColor,
+                }}
+                _focus={{
+                  boxShadow: "0 0 0 3px rgba(66, 153, 225, 0.6)",
+                }}
+              >
+                Admin
+              </Tab>
+            )}
           </TabList>
 
           <TabPanels>
@@ -573,6 +593,13 @@ function Dashboard() {
                 </CardBody>
               </Card>
             </TabPanel>
+
+            {/* Admin Panel */}
+            {isAdmin && (
+              <TabPanel>
+                <Admin />
+              </TabPanel>
+            )}
           </TabPanels>
         </Tabs>
       </Container>
