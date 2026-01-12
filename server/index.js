@@ -558,7 +558,8 @@ if (process.env.NODE_ENV === "production") {
   app.use(express.static(buildPath));
 
   // React Router support: all non-/api routes return index.html
-  app.get("/*", (req, res) => {
+  // Using middleware instead of route pattern for Express 5 compatibility
+  app.use((req, res) => {
     res.sendFile(path.join(buildPath, "index.html"));
   });
 } else {
