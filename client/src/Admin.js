@@ -1,10 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
-  Box,
-  Container,
   Heading,
   VStack,
-  HStack,
   Card,
   CardHeader,
   CardBody,
@@ -15,8 +12,6 @@ import {
   Th,
   Td,
   TableContainer,
-  Badge,
-  Button,
   IconButton,
   useToast,
   Spinner,
@@ -40,12 +35,7 @@ function Admin() {
   const tableHeaderBg = useColorModeValue("gray.50", "gray.700");
   const tableRowHoverBg = useColorModeValue("gray.50", "gray.700");
 
-  useEffect(() => {
-    loadUsers();
-    loadStats();
-  }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
@@ -79,9 +69,9 @@ function Admin() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch("http://localhost:5000/api/admin/stats", {
@@ -97,7 +87,12 @@ function Admin() {
     } catch (err) {
       console.error("Failed to load stats:", err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+    loadStats();
+  }, [loadUsers, loadStats]);
 
   const handleRoleChange = async (userId, newRole) => {
     try {

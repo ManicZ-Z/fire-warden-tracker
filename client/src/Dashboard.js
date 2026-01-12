@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Admin from "./Admin";
 import {
@@ -98,7 +98,7 @@ function Dashboard() {
       });
   }, [toast]);
 
-  const loadCheckins = () => {
+  const loadCheckins = useCallback(() => {
     setIsLoadingCheckins(true);
     const token = localStorage.getItem("token");
     fetch("/api/checkins", {
@@ -122,13 +122,13 @@ function Dashboard() {
           isClosable: true,
         });
       });
-  };
+  }, [toast]);
 
   useEffect(() => {
     if (view === 1) {
       loadCheckins();
     }
-  }, [view]);
+  }, [view, loadCheckins]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
