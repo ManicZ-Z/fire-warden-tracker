@@ -39,7 +39,7 @@ function Admin() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/admin/users", {
+      const response = await fetch("/api/admin/users", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -74,7 +74,7 @@ function Admin() {
   const loadStats = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/admin/stats", {
+      const response = await fetch("/api/admin/stats", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -98,7 +98,7 @@ function Admin() {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://localhost:5000/api/admin/users/${userId}/role`,
+        `/api/admin/users/${userId}/role`,
         {
           method: "PUT",
           headers: {
@@ -148,7 +148,7 @@ function Admin() {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://localhost:5000/api/admin/users/${userId}`,
+        `/api/admin/users/${userId}`,
         {
           method: "DELETE",
           headers: {
