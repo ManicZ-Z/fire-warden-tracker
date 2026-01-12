@@ -1,0 +1,21 @@
+{
+  "name": "fire-warden-tracker",
+  "version": "1.0.0",
+  "description": "Fire Warden Check-in Tracker - Full-stack React + Express app deployed to Azure",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=18.x",
+    "npm": ">=9.x"
+  },
+  "scripts": {
+    "postinstall": "cd client && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build",
+    "start": "cd server && node index.js",
+    "dev:server": "cd server && node index.js",
+    "dev:client": "cd client && npm start",
+    "dev": "echo 'Run dev:server in one terminal and dev:client in another'"
+  },
+  "keywords": ["fire-warden", "tracker", "react", "express", "azure"],
+  "author": "",
+  "license": "ISC"
+}

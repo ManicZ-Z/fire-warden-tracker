@@ -4,6 +4,7 @@ const cors = require("cors");
 const sql = require("mssql");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const path = require("path");
 
 console.log("✅ SERVER FILE LOADED:", __filename);
 
@@ -547,10 +548,27 @@ app.get("/api/admin/stats", authenticateToken, authorizeAdmin, async (req, res) 
 
 // ==================== END ADMIN ENDPOINTS ====================
 
-// Catch-all (helps debug missing routes)
-app.use((req, res) => {
-  res.status(404).send(`Cannot ${req.method} ${req.url}`);
-});
+// ==================== PRODUCTION: SERVE REACT APP ====================
+
+// In production, serve the React build folder
+if (process.env.NODE_ENV === "production") {
+  const buildPath = path.join(__dirname, "..", "client", "build");
+
+  // Serve static files from the React app
+  app.use(express.static(buildPath));
+
+  // React Router support: all non-/api routes return index.html
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(buildPath, "index.html"));
+  });
+} else {
+  // Development mode: API-only, React runs on separate port
+  app.use((req, res) => {
+    res.status(404).send(`Cannot ${req.method} ${req.url}`);
+  });
+}
+
+// ==================== END PRODUCTION CONFIG ====================
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
