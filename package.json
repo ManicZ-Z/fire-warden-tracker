@@ -1,4 +1,4 @@
-gitsta{
+{
   "name": "fire-warden-tracker",
   "version": "1.0.0",
   "description": "Fire Warden Check-in Tracker - Full-stack React + Express app deployed to Azure",
