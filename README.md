@@ -146,4 +146,4 @@ fire-warden-tracker/
 
 ## License
 
-ISC
+ISC **
